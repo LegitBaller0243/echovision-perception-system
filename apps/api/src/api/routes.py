@@ -74,5 +74,8 @@ def health_check():
 def text_to_speech():
     data = request.get_json()
     text = data.get('text', '')
-    audio_path = tts(text)
-    return jsonify({"audio_path": audio_path})
+    try:
+        result = tts(text)
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 502

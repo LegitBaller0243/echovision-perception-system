@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { sendAutoDetect } from "../api";
+import { sendAutoDetect, sendTextToSpeech } from "../api";
 
 export default function CameraFeed({ onCapture, onAction }) {
   const [result, setResult] = useState(null);
@@ -31,12 +31,18 @@ export default function CameraFeed({ onCapture, onAction }) {
       onCapture && onCapture(blob);
       try {
         const response = await sendAutoDetect(blob);
-        console.log(response["result"])
-        const audioResponse = await fetch('http://127.0.0.1:5000/text-to-speech', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: response["result"] })
-        });
+        setResult(response["result"]);
+        console.log(response["result"]);
+
+        const ttsResponse = await sendTextToSpeech(response["result"]);
+        if (ttsResponse?.ok && ttsResponse?.audio_base64) {
+          const audio = new Audio(
+            `data:${ttsResponse.content_type || "audio/mpeg"};base64,${ttsResponse.audio_base64}`
+          );
+          await audio.play();
+        } else {
+          console.error("TTS error:", ttsResponse?.error || "Unknown TTS error");
+        }
       } catch (err) {
         console.error("Auto-detect error:", err);
       }

@@ -1,11 +1,16 @@
+# Requires Python 3.11.x
 flask
 flask-cors
-opencv-python
+opencv-python==4.10.0.84
 onnxruntime
-numpy
+numpy==1.26.4
 python-dotenv
 ultralytics
 pytesseract
 Pillow
-tensorflow
+tensorflow-macos==2.15.1; platform_system == "Darwin" and platform_machine == "arm64" and python_version < "3.12"
+tensorflow-metal==1.1.0; platform_system == "Darwin" and platform_machine == "arm64" and python_version < "3.12"
+tensorflow==2.15.1; platform_system != "Darwin" and python_version < "3.12"
 openai
+elevenlabs
+playsound==1.2.2

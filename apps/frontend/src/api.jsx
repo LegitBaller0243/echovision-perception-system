@@ -1,6 +1,7 @@
 import axios from "axios";
 
-const API_BASE = "http://127.0.0.1:5000"; // use 127.0.0.1 to match Flask exactly
+export const API_BASE =
+  import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:5000";
 
 export const checkHealth = async () => {
   try {
@@ -34,6 +35,24 @@ export const sendAutoDetect = async (imageBlob) => {
     return res.data; // should be { result: ... }
   } catch (err) {
     console.error("Auto-detect failed:", err);
+    throw err;
+  }
+};
+
+export const sendTextToSpeech = async (text) => {
+  try {
+    const res = await axios.post(
+      `${API_BASE}/text-to-speech`,
+      { text },
+      {
+        withCredentials: false,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+
+    return res.data;
+  } catch (err) {
+    console.error("Text-to-speech failed:", err);
     throw err;
   }
 };
