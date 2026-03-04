@@ -1,0 +1,9 @@
+[
+  {
+    "name": "gpt-4o-mini",
+    "provider": "openai_compat",
+    "api_key_env": "AZURE_FOUNDRY_API_KEY",
+    "base_url_env": "AZURE_FOUNDRY_OPENAI_BASE_URL",
+    "model_env": "AZURE_DEPLOYMENT_GPT_4O_MINI"
+  }
+]

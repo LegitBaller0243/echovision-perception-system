@@ -1,0 +1,59 @@
+[
+  {
+    "case_name": "query_case_indoor_near_obstacles",
+    "is_auto_detect": false,
+    "query": "Am I safe to move forward and what should I avoid?",
+    "detections": [
+      {
+        "class": "person",
+        "confidence": 0.93,
+        "position": {"x1": 142.3, "y1": 120.0, "x2": 310.4, "y2": 465.2}
+      },
+      {
+        "class": "chair",
+        "confidence": 0.88,
+        "position": {"x1": 420.1, "y1": 265.2, "x2": 560.8, "y2": 510.4}
+      }
+    ],
+    "depth_data": {
+      "objects_with_depth": [
+        {"label": "person", "relative_depth": 0.42},
+        {"label": "chair", "relative_depth": 0.67}
+      ]
+    }
+  },
+  {
+    "case_name": "auto_detect_case_brief_scene",
+    "is_auto_detect": true,
+    "detections": [
+      {
+        "class": "bicycle",
+        "confidence": 0.87,
+        "position": {"x1": 98.1, "y1": 190.5, "x2": 344.8, "y2": 520.0}
+      },
+      {
+        "class": "dog",
+        "confidence": 0.91,
+        "position": {"x1": 355.0, "y1": 240.0, "x2": 510.7, "y2": 518.2}
+      }
+    ],
+    "depth_data": {
+      "objects_with_depth": [
+        {"label": "bicycle", "relative_depth": 0.36},
+        {"label": "dog", "relative_depth": 0.58}
+      ]
+    }
+  },
+  {
+    "case_name": "pipeline_livingroom",
+    "image_path": "llm_evaluation/images/livingroom.jpg",
+    "is_auto_detect": false,
+    "query": "Is there a clear path to continue straight?"
+  },
+  {
+    "case_name": "pipeline_doorway",
+    "image_path": "llm_evaluation/images/doorway.jpg",
+    "is_auto_detect": false,
+    "query": "Can I walk through the doorway safely right now?"
+  }
+]

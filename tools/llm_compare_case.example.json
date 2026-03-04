@@ -1,0 +1,38 @@
+{
+  "is_auto_detect": false,
+  "query": "Am I safe to move forward and what obstacles should I avoid?",
+  "detections": [
+    {
+      "class": "person",
+      "confidence": 0.93,
+      "position": {
+        "x1": 142.3,
+        "y1": 120.0,
+        "x2": 310.4,
+        "y2": 465.2
+      }
+    },
+    {
+      "class": "chair",
+      "confidence": 0.88,
+      "position": {
+        "x1": 420.1,
+        "y1": 265.2,
+        "x2": 560.8,
+        "y2": 510.4
+      }
+    }
+  ],
+  "depth_data": {
+    "objects_with_depth": [
+      {
+        "label": "person",
+        "relative_depth": 0.42
+      },
+      {
+        "label": "chair",
+        "relative_depth": 0.67
+      }
+    ]
+  }
+}
