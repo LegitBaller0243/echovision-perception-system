@@ -109,9 +109,10 @@ Planned improvements after architecture cleanup:
 2. Set env vars:
    - `AZURE_OPENAI_API_KEY`
    - `MODEL_DEPLOYMENT_NAME`
-   - `AGENT_REGULAR_ID`
-   - `AGENT_AUTO_DETECT_ID`
    - `ELEVENLABS_API_KEY`
+   - Optional prompt filtering:
+     - `LLM_MIN_CONFIDENCE` (default `0.45`)
+     - `LLM_MAX_OBJECTS` (default `4`)
 3. Run:
    - `python backend/app.py` (compat entrypoint)
    - or `python apps/api/src/main.py`
@@ -122,6 +123,35 @@ Planned improvements after architecture cleanup:
 3. `npm run dev`
 
 Frontend expects backend at `http://127.0.0.1:5000`.
+
+## LLM Model Comparison (Side-by-Side)
+Use the compare script to test multiple models on the exact same prompt payload.
+
+1. Set provider keys in `.env` as needed:
+   - `AZURE_FOUNDRY_OPENAI_BASE_URL` (example: `https://<resource>.services.ai.azure.com/openai/v1/`)
+   - `AZURE_FOUNDRY_API_KEY`
+   - `AZURE_DEPLOYMENT_GPT_4O_MINI`
+2. Edit:
+   - `tools/llm_compare_models.example.json` (default single-model config for GPT-4o-mini)
+   - `tools/llm_compare_case.example.json` (your query + detections + depth)
+3. Run:
+   - `python tools/llm_compare.py --runs-per-model 3 --concurrency 6 --output-json /tmp/llm_compare_report.json`
+
+The script prints latency/token summaries and a sample response for each model, then sorts by average latency.
+To compare additional models later, add them as extra entries in `tools/llm_compare_models.example.json`.
+
+### Varied Cases + Perception Pipeline Cases
+You can benchmark multiple cases in one run (including cases that call YOLO + MiDaS from an image).
+
+1. Edit `tools/llm_compare_cases.example.json`
+   - Inline case mode: provide `detections`, `depth_data`, `is_auto_detect`, optional `query`
+   - Pipeline case mode: provide `image_path`, `is_auto_detect`, optional `query`
+2. Run:
+   - `python tools/llm_compare.py --cases-file tools/llm_compare_cases.example.json --runs-per-model 5 --concurrency 4 --output-json /tmp/llm_compare_report.json`
+
+Per-model config supports:
+- `token_param`: `max_completion_tokens` or `max_tokens`
+- `max_output_tokens`: override token cap for that model
 
 ## Notes for Interviewers
 - This repository intentionally preserves core behavior while improving architecture.

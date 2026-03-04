@@ -1,8 +1,15 @@
 .env
 __pycache__
 __init__.py
+.venv/
 
 klr
 test_azure_ai.py
 
 *.pt
+
+# LLM eval artifacts
+llm_comparison_*/
+llm_evaluation/results/*
+!llm_evaluation/results/.gitkeep
+llm_compare_report*.json

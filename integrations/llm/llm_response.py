@@ -3,6 +3,7 @@ import os
 from typing import Any, Dict, List, Optional
 from openai import AzureOpenAI
 from dotenv import load_dotenv
+from integrations.llm.prompt_builder import SPATIAL_SYSTEM_PROMPT, create_prompt
 
 load_dotenv()
 
@@ -20,9 +21,6 @@ client = AzureOpenAI(
     azure_endpoint=endpoint,
     api_key=api_key
 )
-
-ASSISTANT_ID_REGULAR = os.getenv("AGENT_REGULAR_ID")
-ASSISTANT_ID_AUTO_DETECT = os.getenv("AGENT_AUTO_DETECT_ID")
 
 
 # ---------------------------------------------------------------------
@@ -45,51 +43,13 @@ def log_prompt(prompt: str):
 
 
 # ---------------------------------------------------------------------
-# PROMPT CREATION
-# ---------------------------------------------------------------------
-def create_prompt(detections, depth_data, query, is_auto_detect):
-    detections_json = json.dumps(detections, indent=2)
-    depth_json = json.dumps(depth_data, indent=2)
-
-    if is_auto_detect:
-        prompt = f"""
-        You are an automatic spatial awareness assistant for a visually impaired user.
-        Analyze the detected objects and spatial data below, and briefly describe what is seen.
-
-        ### DETECTED OBJECTS:
-        {detections_json}
-
-        ### DEPTH / SPATIAL DATA:
-        {depth_json}
-        """
-    else:
-        if not query:
-            raise ValueError("Query is required for regular mode")
-        prompt = f"""
-        Respond based on the context and data provided below.
-
-        ### USER QUERY:
-        {query}
-
-        ### DETECTED OBJECTS:
-        {detections_json}
-
-        ### DEPTH / SPATIAL DATA:
-        {depth_json}
-        """
-    
-    log_prompt(prompt)
-    return prompt
-
-
-# ---------------------------------------------------------------------
 # AZURE CALL
 # ---------------------------------------------------------------------
-def ask_azure(prompt, assistant_id):
-    print(f"[azure_ai_responder] Sending prompt to Azure (assistant_id={assistant_id})...")
+def ask_azure(prompt):
+    print("[azure_ai_responder] Sending prompt to Azure...")
 
     messages = [
-        {"role": "system", "content": f"Assistant ID: {assistant_id}"},
+        {"role": "system", "content": SPATIAL_SYSTEM_PROMPT},
         {"role": "user", "content": prompt}
     ]
 
@@ -118,9 +78,9 @@ def get_response(detections, depth_data, query, is_auto_detect):
     log_json("Detections", detections)
     log_json("Depth Data", depth_data)
 
-    assistant_id = ASSISTANT_ID_AUTO_DETECT if is_auto_detect else ASSISTANT_ID_REGULAR
     prompt = create_prompt(detections, depth_data, query, is_auto_detect)
-    response = ask_azure(prompt, assistant_id)
+    log_prompt(prompt)
+    response = ask_azure(prompt)
 
     print("[azure_ai_responder] Final response text:", response)
     return response
