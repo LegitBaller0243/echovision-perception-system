@@ -1,11 +1,15 @@
-import json
+import logging
 import os
-from typing import Any, Dict, List, Optional
+from time import perf_counter
+
 from openai import AzureOpenAI
 from dotenv import load_dotenv
+
+from services.app_core.observability import ensure_trace_id, get_logger, log_event, stage_timer
 from integrations.llm.prompt_builder import SPATIAL_SYSTEM_PROMPT, create_prompt
 
 load_dotenv()
+logger = get_logger(__name__)
 
 api_key = os.getenv("AZURE_OPENAI_API_KEY")
 deployment = os.getenv("MODEL_DEPLOYMENT_NAME")
@@ -19,34 +23,16 @@ if not deployment:
 client = AzureOpenAI(
     api_version="2024-12-01-preview",
     azure_endpoint=endpoint,
-    api_key=api_key
+    api_key=api_key,
 )
-
-
-# ---------------------------------------------------------------------
-# ✅ DEBUG HELPERS
-# ---------------------------------------------------------------------
-def log_json(title: str, data: dict | list | None):
-    print(f"\n[azure_ai_responder] {title}:")
-    try:
-        print(json.dumps(data, indent=2))
-    except Exception:
-        print(data)
-
-
-def log_prompt(prompt: str):
-    print("\n" + "=" * 80)
-    print("PROMPT SENT TO AZURE:")
-    print("=" * 80)
-    print(prompt)
-    print("=" * 80 + "\n")
 
 
 # ---------------------------------------------------------------------
 # AZURE CALL
 # ---------------------------------------------------------------------
-def ask_azure(prompt):
-    print("[azure_ai_responder] Sending prompt to Azure...")
+def ask_azure(prompt: str, trace_id: str | None = None):
+    trace_id = ensure_trace_id(trace_id)
+    timings_ms = {}
 
     messages = [
         {"role": "system", "content": SPATIAL_SYSTEM_PROMPT},
@@ -54,33 +40,45 @@ def ask_azure(prompt):
     ]
 
     try:
-        response = client.chat.completions.create(
-            messages=messages,
-            max_completion_tokens=512,
-            model=deployment,
+        with stage_timer(timings_ms, "azure_llm_ms"):
+            response = client.chat.completions.create(
+                messages=messages,
+                max_completion_tokens=512,
+                model=deployment,
+            )
+        output_text = response.choices[0].message.content
+        log_event(
+            logger,
+            "azure_llm_completed",
+            trace_id=trace_id,
+            timings_ms=timings_ms,
         )
-        # Log the raw response for debugging
-        print("\n[azure_ai_responder] Raw Azure response:")
-        print(response)
-
-        # Try to parse cleanly
-        return response.choices[0].message.content
+        return output_text
     except Exception as e:
-        print("[azure_ai_responder] ERROR:", e)
-        import traceback; traceback.print_exc()
+        log_event(
+            logger,
+            "azure_llm_failed",
+            level=logging.ERROR,
+            trace_id=trace_id,
+            timings_ms=timings_ms,
+        )
+        logger.exception("azure_llm_exception")
         return f"Error while querying Azure: {e}"
 
 
 # ---------------------------------------------------------------------
 # ENTRY POINT
 # ---------------------------------------------------------------------
-def get_response(detections, depth_data, query, is_auto_detect):
-    log_json("Detections", detections)
-    log_json("Depth Data", depth_data)
-
+def get_response(detections, depth_data, query, is_auto_detect, trace_id: str | None = None):
+    trace_id = ensure_trace_id(trace_id)
+    total_start = perf_counter()
     prompt = create_prompt(detections, depth_data, query, is_auto_detect)
-    log_prompt(prompt)
-    response = ask_azure(prompt)
-
-    print("[azure_ai_responder] Final response text:", response)
+    response = ask_azure(prompt, trace_id=trace_id)
+    total_ms = round((perf_counter() - total_start) * 1000, 2)
+    log_event(
+        logger,
+        "llm_response_generated",
+        trace_id=trace_id,
+        timings_ms={"llm_total_ms": total_ms},
+    )
     return response
