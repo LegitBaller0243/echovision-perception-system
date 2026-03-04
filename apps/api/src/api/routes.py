@@ -4,12 +4,13 @@ import sys
 import tempfile
 from pathlib import Path
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, Response, send_from_directory
 from flask_cors import CORS
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+FRONTEND_DIST = PROJECT_ROOT / "apps" / "frontend" / "dist"
 
 from integrations.audio.text_to_speech import text_to_speech as tts
 from services.app_core.use_cases.orchestrator import process_auto_detect, process_query
@@ -17,6 +18,52 @@ from services.app_core.use_cases.orchestrator import process_auto_detect, proces
 
 routes = Blueprint('routes', __name__)
 CORS(routes)
+
+
+@routes.route('/', methods=['GET'])
+def home():
+    index_file = FRONTEND_DIST / "index.html"
+    if index_file.exists():
+        return send_from_directory(FRONTEND_DIST, "index.html")
+
+    return jsonify({
+        "name": "KLR.ai API",
+        "status": "running",
+        "endpoints": ["/health", "/auto-detect", "/query", "/text-to-speech"],
+        "hint": "Build frontend with `cd apps/frontend && npm run build` to serve UI at /",
+    }), 200
+
+
+@routes.route('/assets/<path:filename>', methods=['GET'])
+def frontend_assets(filename):
+    assets_dir = FRONTEND_DIST / "assets"
+    if assets_dir.exists():
+        return send_from_directory(assets_dir, filename)
+    return Response(status=404)
+
+
+@routes.route('/favicon.ico', methods=['GET'])
+@routes.route('/apple-touch-icon.png', methods=['GET'])
+@routes.route('/apple-touch-icon-precomposed.png', methods=['GET'])
+def icon_placeholders():
+    icon_name = Path(request.path).name
+    icon_path = FRONTEND_DIST / icon_name
+    if icon_path.exists():
+        return send_from_directory(FRONTEND_DIST, icon_name)
+    return Response(status=204)
+
+
+@routes.route('/<path:path>', methods=['GET'])
+def frontend_catch_all(path):
+    candidate = FRONTEND_DIST / path
+    if candidate.exists() and candidate.is_file():
+        return send_from_directory(FRONTEND_DIST, path)
+
+    index_file = FRONTEND_DIST / "index.html"
+    if index_file.exists():
+        return send_from_directory(FRONTEND_DIST, "index.html")
+
+    return jsonify({"error": f"Route '{path}' not found"}), 404
 
 
 def decode_base64_image(base64_string: str) -> str:
