@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from "react";
 import { checkHealth } from "./api";
 import CameraFeed from "./components/CameraFeed";
-import AudioInterface from "./components/AudioInterface";
 
 export default function App() {
   const [latestImage, setLatestImage] = useState(null);
@@ -38,34 +37,28 @@ export default function App() {
   };
 
   return (
-    <div style={{ textAlign: "center", padding: "2rem" }}>
-      <h1>KLR Vision Assistant</h1>
+    <main className="app-shell">
+      <header className="hero">
+        <p className="badge">KLR.ai</p>
+        <h1>Vision Assistant</h1>
+        <p className="subtitle">Mobile-ready scene guidance with voice-first interaction.</p>
+      </header>
 
       {error && (
-        <div style={{ 
-          margin: "1rem auto", 
-          padding: "1rem", 
-          backgroundColor: "#fee", 
-          color: "#c00",
-          borderRadius: "4px",
-          maxWidth: "600px"
-        }}>
-          ⚠️ {error}
+        <div className="error-banner">
+          {error}
         </div>
       )}
 
-      {/* Camera and audio now trigger the same health check */}
       <CameraFeed onCapture={setLatestImage} onAction={handleComponentClick} />
-      <AudioInterface
-        latestImage={latestImage}
-        onAction={handleComponentClick}
-      />
 
-      {healthStatus && (
-        <p style={{ marginTop: "1rem" }}>
-          🩺 Flask backend status: <strong>{healthStatus}</strong>
-        </p>
-      )}
-    </div>
+      <footer className="health-footer">
+        <span>Backend</span>
+        <strong className={healthStatus === "healthy" ? "ok" : "down"}>
+          {healthStatus || "checking..."}
+        </strong>
+        {latestImage && <span className="capture-dot" aria-label="captured frame" />}
+      </footer>
+    </main>
   );
 }
