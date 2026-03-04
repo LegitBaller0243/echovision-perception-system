@@ -1,11 +1,4 @@
-import sys
-from pathlib import Path
-
-# Add project root to path to import prompt_responder
-project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(project_root))
-
-from prompt_responder.llm_response import get_response
+from integrations.llm.llm_response import get_response
 
 
 def azure_respond(query: str, detections: list, depth_data: dict) -> str:

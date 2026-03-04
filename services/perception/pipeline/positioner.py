@@ -6,8 +6,8 @@ import numpy as np
 from PIL import Image
 from typing import Dict, List
 
-from .depth_estimator import depth_estimate
-from .collision_detector import collision_analyze
+from services.perception.inference.midas.adapter import depth_estimate
+from services.perception.rules.collision_scoring import collision_analyze
 
 def _is_base64_string(data: str) -> bool:
     """Check if string is likely base64 encoded."""

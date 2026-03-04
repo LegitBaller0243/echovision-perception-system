@@ -4,7 +4,7 @@ import time
 import cv2
 from matplotlib import pyplot
 from ultralytics import YOLO
-from backend.services.yolo_detector import yolo_detect
+from services.perception.inference.yolo.adapter import yolo_detect
 
 
 def getObjects(image):

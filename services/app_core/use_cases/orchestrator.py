@@ -4,22 +4,23 @@ from pathlib import Path
 import traceback
 
 project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(project_root))
+if str(project_root.parent) not in sys.path:
+    sys.path.insert(0, str(project_root.parent))
 
-from .midas_positioner import positioner
-from .yolo_detector import yolo_detect
-from .azure_ai_responder import azure_respond, azure_auto_detect
+from integrations.llm.azure_responder import azure_auto_detect, azure_respond
+from services.perception.pipeline.runner import run_perception_pipeline
 
 
 def process_query(text_query: str, image_path: str) -> dict:
     print("\n[process_query] Starting query pipeline...")
     print(f"[process_query] Image path: {image_path}")
     try:
-        yolo_results = yolo_detect(image_path)
+        perception_result = run_perception_pipeline(image_path)
+        yolo_results = perception_result["yolo_results"]
         print("[process_query] YOLO results:", json.dumps(yolo_results, indent=2))
 
-        detections = yolo_results["Objects"]
-        depth_data = positioner(image_path, detections)
+        detections = perception_result["detections"]
+        depth_data = perception_result["depth_data"]
         if not depth_data:
             print("[process_auto_detect] No depth data, using fallback structure.")
             depth_data = {
@@ -29,7 +30,6 @@ def process_query(text_query: str, image_path: str) -> dict:
                 ]
             }
 
-        depth_data = positioner(image_path, detections)
         print("[process_query] Depth data:", json.dumps(depth_data, indent=2))
 
         response_text = azure_respond(
@@ -50,11 +50,12 @@ def process_auto_detect(image_path: str) -> dict:
     print("\n[process_auto_detect] Starting auto-detect pipeline...")
     print(f"[process_auto_detect] Image path: {image_path}")
     try:
-        yolo_results = yolo_detect(image_path)
+        perception_result = run_perception_pipeline(image_path)
+        yolo_results = perception_result["yolo_results"]
         print("[process_auto_detect] YOLO results:", json.dumps(yolo_results, indent=2))
 
-        detections = yolo_results["Objects"]
-        depth_data = positioner(image_path, detections)
+        detections = perception_result["detections"]
+        depth_data = perception_result["depth_data"]
         print("[process_auto_detect] Depth data:", json.dumps(depth_data, indent=2))
 
         response_text = azure_auto_detect(
