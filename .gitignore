@@ -1,0 +1,8 @@
+.env
+__pycache__
+__init__.py
+
+klr
+test_azure_ai.py
+
+*.pt
