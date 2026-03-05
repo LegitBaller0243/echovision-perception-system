@@ -14,6 +14,7 @@ logger = get_logger(__name__)
 api_key = os.getenv("AZURE_OPENAI_API_KEY")
 deployment = os.getenv("MODEL_DEPLOYMENT_NAME")
 endpoint = "https://samjswag-6951-resource.cognitiveservices.azure.com/"
+max_completion_tokens = int(os.getenv("LLM_MAX_COMPLETION_TOKENS", "220"))
 
 if not api_key:
     raise ValueError("AZURE_OPENAI_API_KEY environment variable is not set")
@@ -43,7 +44,7 @@ def ask_azure(prompt: str, trace_id: str | None = None):
         with stage_timer(timings_ms, "azure_llm_ms"):
             response = client.chat.completions.create(
                 messages=messages,
-                max_completion_tokens=512,
+                max_completion_tokens=max_completion_tokens,
                 model=deployment,
             )
         output_text = response.choices[0].message.content

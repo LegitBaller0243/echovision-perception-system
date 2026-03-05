@@ -28,7 +28,33 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
-def _prune_for_prompt(detections: List[Dict[str, Any]], depth_data: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+def _compact_detection(det: Dict[str, Any]) -> Dict[str, Any]:
+    pos = det.get("position") or {}
+    return {
+        "class": det.get("class"),
+        "confidence": round(_safe_float(det.get("confidence"), 0.0), 3),
+        "position": {
+            "x1": round(_safe_float(pos.get("x1"), 0.0), 1),
+            "y1": round(_safe_float(pos.get("y1"), 0.0), 1),
+            "x2": round(_safe_float(pos.get("x2"), 0.0), 1),
+            "y2": round(_safe_float(pos.get("y2"), 0.0), 1),
+        },
+    }
+
+
+def _compact_collision(item: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "objectId": item.get("objectId"),
+        "label": item.get("label"),
+        "direction": item.get("direction"),
+        "dangerLevel": item.get("dangerLevel"),
+        "confidenceScore": round(_safe_float(item.get("confidenceScore"), 0.0), 3),
+    }
+
+
+def _prune_for_prompt(
+    detections: List[Dict[str, Any]], depth_data: Dict[str, Any]
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     min_conf = _safe_float(os.getenv("LLM_MIN_CONFIDENCE", "0.45"), default=0.45)
     max_objects = max(1, int(_safe_float(os.getenv("LLM_MAX_OBJECTS", "4"), default=4)))
 
@@ -43,59 +69,50 @@ def _prune_for_prompt(detections: List[Dict[str, Any]], depth_data: Dict[str, An
     kept = kept[:max_objects]
 
     kept_ids = {idx for idx, _ in kept}
-    kept_labels = {det.get("class") for _, det in kept if det.get("class")}
-    filtered_detections = [det for _, det in kept]
+    filtered_detections = [_compact_detection(det) for _, det in kept]
 
     if not isinstance(depth_data, dict):
         return filtered_detections, depth_data
 
-    filtered_depth = json.loads(json.dumps(depth_data))
-    if isinstance(filtered_depth.get("collisionAnalysis"), list):
-        filtered_depth["collisionAnalysis"] = [
-            item
-            for item in filtered_depth["collisionAnalysis"]
+    collision = depth_data.get("collisionAnalysis")
+    filtered_collision = []
+    if isinstance(collision, list):
+        filtered_collision = [
+            _compact_collision(item)
+            for item in collision
             if item.get("objectId") in kept_ids
         ]
-    if isinstance(filtered_depth.get("objects_with_depth"), list):
-        filtered_depth["objects_with_depth"] = [
-            item
-            for item in filtered_depth["objects_with_depth"]
-            if item.get("label") in kept_labels
-        ]
+
+    depth_stats = depth_data.get("depthStats")
+    filtered_stats = {}
+    if isinstance(depth_stats, dict):
+        for key in ("min", "max", "avg"):
+            if key in depth_stats:
+                filtered_stats[key] = round(_safe_float(depth_stats.get(key), 0.0), 3)
+
+    filtered_depth = {
+        "depthStats": filtered_stats,
+        "collisionAnalysis": filtered_collision,
+    }
 
     return filtered_detections, filtered_depth
 
 
 def create_prompt(detections, depth_data, query, is_auto_detect):
     detections, depth_data = _prune_for_prompt(detections or [], depth_data or {})
-    detections_json = json.dumps(detections, indent=2)
-    depth_json = json.dumps(depth_data, indent=2)
+    detections_json = json.dumps(detections, separators=(",", ":"))
+    depth_json = json.dumps(depth_data, separators=(",", ":"))
 
     if is_auto_detect:
-        return f"""
-        Mode: Scene description
-        Task: Briefly describe the most relevant nearby objects.
-
-        ### DETECTED OBJECTS:
-        {detections_json}
-
-        ### DEPTH / SPATIAL DATA:
-        {depth_json}
-        """
+        return (
+            "Mode: scene description. Briefly describe nearby relevant objects. "
+            f"DETECTIONS={detections_json} DEPTH={depth_json}"
+        )
 
     if not query:
         raise ValueError("Query is required for regular mode")
 
-    return f"""
-        Mode: Query response
-        Task: Answer the user question from detections and spatial data.
-
-        ### USER QUERY:
-        {query}
-
-        ### DETECTED OBJECTS:
-        {detections_json}
-
-        ### DEPTH / SPATIAL DATA:
-        {depth_json}
-        """
+    return (
+        "Mode: query response. Answer only from provided data. "
+        f"USER_QUERY={query} DETECTIONS={detections_json} DEPTH={depth_json}"
+    )

@@ -16,8 +16,7 @@ def run_perception_pipeline(image_path: str, trace_id: str | None = None) -> Dic
     timings_ms = {}
 
     with stage_timer(timings_ms, "yolo_ms"):
-        yolo_results = detect_objects(image_path)
-    detections = yolo_results.get("Objects", [])
+        detections = detect_objects(image_path)
     with stage_timer(timings_ms, "spatial_ms"):
         depth_data = estimate_spatial(image_path, detections)
 
@@ -29,7 +28,6 @@ def run_perception_pipeline(image_path: str, trace_id: str | None = None) -> Dic
     )
 
     return {
-        "yolo_results": yolo_results,
         "detections": detections,
         "depth_data": depth_data,
         "timings_ms": timings_ms,
