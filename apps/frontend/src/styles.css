@@ -137,6 +137,10 @@ button:disabled {
   border: 1px solid rgba(210, 231, 255, 0.25);
 }
 
+.replay-button {
+  grid-column: 1 / -1;
+}
+
 .status-block {
   margin-top: 0.7rem;
 }
