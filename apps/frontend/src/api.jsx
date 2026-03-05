@@ -12,18 +12,16 @@ export const checkHealth = async () => {
       },
     });
     return res.data;
-  } catch (err) {
-    console.error("Health check failed:", err);
+  } catch (_err) {
     return { status: "unhealthy" };
   }
 };
-// 🆕 NEW: call the /auto-detect endpoint
+
 export const sendAutoDetect = async (imageBlob) => {
   try {
-    // Convert the image blob to base64
     const base64Image = await blobToBase64(imageBlob);
     if (!base64Image || typeof base64Image !== "string") {
-      throw new Error("Captured frame is empty. Try again.");
+      throw new Error("Capture failed");
     }
 
     const res = await axios.post(
@@ -35,21 +33,20 @@ export const sendAutoDetect = async (imageBlob) => {
       }
     );
 
-    return res.data; // should be { result: ... }
+    return res.data;
   } catch (err) {
-    console.error("Auto-detect failed:", err);
-    throw toApiError(err, "Auto-detect request failed");
+    throw toApiError(err, "Scan failed");
   }
 };
 
 export const sendQuery = async (query, imageBlob) => {
   try {
     if (!query || typeof query !== "string" || !query.trim()) {
-      throw new Error("Query text is empty.");
+      throw new Error("No query");
     }
     const base64Image = await blobToBase64(imageBlob);
     if (!base64Image || typeof base64Image !== "string") {
-      throw new Error("Captured frame is empty. Try again.");
+      throw new Error("Capture failed");
     }
 
     const res = await axios.post(
@@ -62,8 +59,7 @@ export const sendQuery = async (query, imageBlob) => {
     );
     return res.data;
   } catch (err) {
-    console.error("Query request failed:", err);
-    throw toApiError(err, "Query request failed");
+    throw toApiError(err, "Query failed");
   }
 };
 
@@ -80,27 +76,24 @@ export const sendTextToSpeech = async (text) => {
 
     return res.data;
   } catch (err) {
-    console.error("Text-to-speech failed:", err);
-    throw toApiError(err, "Text-to-speech failed");
+    throw toApiError(err, "Audio failed");
   }
 };
 
-// Helper: convert Blob → Base64
 const blobToBase64 = (blob) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => {
       try {
         if (typeof reader.result !== "string" || !reader.result.includes(",")) {
-          reject(new Error("Unable to encode captured image."));
+          reject(new Error("Capture failed"));
           return;
         }
-        let base64 = reader.result.split(",")[1]; // remove data: prefix
+        let base64 = reader.result.split(",")[1];
         if (!base64) {
-          reject(new Error("Captured image has no data."));
+          reject(new Error("Capture failed"));
           return;
         }
-        // 🧩 fix padding if necessary
         const padding = base64.length % 4;
         if (padding) {
           base64 += "=".repeat(4 - padding);
@@ -122,10 +115,15 @@ const toApiError = (err, fallbackMessage) => {
       err.response?.data?.message ||
       err.response?.data?.detail;
     if (apiMessage) return new Error(apiMessage);
-    if (err.response?.status) {
-      return new Error(`${fallbackMessage} (HTTP ${err.response.status})`);
+    const status = err.response?.status;
+    if (status) {
+      if (status >= 500) return new Error("Server error");
+      if (status === 404) return new Error("Not found");
+      if (status === 401 || status === 403) return new Error("Not allowed");
+      if (status === 408) return new Error("Timeout");
+      return new Error(fallbackMessage);
     }
-    if (err.request) return new Error("No response from server.");
+    if (err.request) return new Error("No server");
   }
   return err instanceof Error ? err : new Error(fallbackMessage);
 };

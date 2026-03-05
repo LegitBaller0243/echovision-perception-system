@@ -6,7 +6,9 @@ export default function CameraFeed({ onCapture, onAction }) {
   const [queryText, setQueryText] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [statusText, setStatusText] = useState("Ready");
   const [uiError, setUiError] = useState("");
+  const [pendingAudioSrc, setPendingAudioSrc] = useState("");
   const videoRef = useRef(null);
   const canvasRef = useRef(document.createElement("canvas"));
   const recognitionRef = useRef(null);
@@ -15,14 +17,22 @@ export default function CameraFeed({ onCapture, onAction }) {
   useEffect(() => {
     const enableCamera = async () => {
       try {
+        setStatusText("Starting camera...");
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "environment" },
           audio: false,
         });
         if (videoRef.current) videoRef.current.srcObject = stream;
+        setStatusText("Ready");
       } catch (err) {
-        console.error("Unable to access camera:", err);
-        setUiError("Camera access failed. Please allow camera permission.");
+        if (err?.name === "NotAllowedError") {
+          setUiError("Camera blocked");
+        } else if (err?.name === "NotFoundError") {
+          setUiError("No camera");
+        } else {
+          setUiError("Camera error");
+        }
+        setStatusText("Camera failed");
       }
     };
     enableCamera();
@@ -32,7 +42,7 @@ export default function CameraFeed({ onCapture, onAction }) {
     new Promise((resolve, reject) => {
       const video = videoRef.current;
       if (!video || !video.videoWidth || !video.videoHeight) {
-        reject(new Error("Camera is not ready yet."));
+        reject(new Error("Camera not ready"));
         return;
       }
 
@@ -44,7 +54,7 @@ export default function CameraFeed({ onCapture, onAction }) {
       canvas.toBlob(
         (blob) => {
           if (!blob) {
-            reject(new Error("Failed to capture frame."));
+            reject(new Error("Capture failed"));
             return;
           }
           resolve(blob);
@@ -57,29 +67,41 @@ export default function CameraFeed({ onCapture, onAction }) {
   const playTTS = async (text) => {
     const ttsResponse = await sendTextToSpeech(text);
     if (!ttsResponse?.ok || !ttsResponse?.audio_base64) {
-      throw new Error(ttsResponse?.error || "TTS did not return audio.");
+      throw new Error(ttsResponse?.error || "Audio failed");
     }
 
+    const src = `data:${ttsResponse.content_type || "audio/mpeg"};base64,${ttsResponse.audio_base64}`;
     const audio = new Audio(
       `data:${ttsResponse.content_type || "audio/mpeg"};base64,${ttsResponse.audio_base64}`
     );
-    await audio.play();
+    try {
+      await audio.play();
+      setPendingAudioSrc("");
+      return true;
+    } catch (err) {
+      setPendingAudioSrc(src);
+      return false;
+    }
   };
 
   const runAutoDetect = async () => {
     setIsProcessing(true);
     setUiError("");
+    setStatusText("Capturing...");
     try {
       onAction && onAction();
       const blob = await captureFrame();
       onCapture && onCapture(blob);
+      setStatusText("Analyzing...");
       const response = await sendAutoDetect(blob);
-      const text = response?.result || "No auto-detect response.";
+      const text = response?.result || "No response";
       setResult(text);
-      await playTTS(text);
+      setStatusText("Speaking...");
+      const played = await playTTS(text);
+      setStatusText(played ? "Ready" : "Tap Play");
     } catch (err) {
-      console.error("Auto-detect error:", err);
-      setUiError(err.message || "Auto-detect failed.");
+      setUiError(err.message || "Scan failed");
+      setStatusText("Scan failed");
     } finally {
       setIsProcessing(false);
     }
@@ -88,20 +110,24 @@ export default function CameraFeed({ onCapture, onAction }) {
   const runQueryFlow = async (spokenText) => {
     setIsProcessing(true);
     setUiError("");
+    setStatusText("Capturing...");
     try {
       onAction && onAction();
       const blob = await captureFrame();
       onCapture && onCapture(blob);
+      setStatusText("Analyzing...");
       const response = await sendQuery(spokenText, blob);
       const responseText =
         response?.result?.response_text ||
         response?.result ||
-        "No response from query endpoint.";
+        "No response";
       setResult(responseText);
-      await playTTS(responseText);
+      setStatusText("Speaking...");
+      const played = await playTTS(responseText);
+      setStatusText(played ? "Ready" : "Tap Play");
     } catch (err) {
-      console.error("Query flow error:", err);
-      setUiError(err.message || "Query flow failed.");
+      setUiError(err.message || "Query failed");
+      setStatusText("Query failed");
     } finally {
       setIsProcessing(false);
     }
@@ -112,7 +138,7 @@ export default function CameraFeed({ onCapture, onAction }) {
       window.SpeechRecognition || window.webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-      setUiError("Speech recognition is not supported on this browser.");
+      setUiError("Speech unavailable");
       return;
     }
 
@@ -141,6 +167,7 @@ export default function CameraFeed({ onCapture, onAction }) {
 
         if (finalTranscript.trim() && !processedFinalRef.current) {
           processedFinalRef.current = true;
+          setStatusText("Analyzing...");
           runQueryFlow(finalTranscript.trim());
         }
       };
@@ -148,12 +175,14 @@ export default function CameraFeed({ onCapture, onAction }) {
       recognition.onerror = (event) => {
         setIsListening(false);
         if (event.error !== "no-speech") {
-          setUiError(`Listening failed: ${event.error}`);
+          setUiError("Mic error");
+          setStatusText("Mic failed");
         }
       };
 
       recognition.onend = () => {
         setIsListening(false);
+        if (!isProcessing) setStatusText("Ready");
       };
 
       recognitionRef.current = recognition;
@@ -162,17 +191,39 @@ export default function CameraFeed({ onCapture, onAction }) {
     processedFinalRef.current = false;
     setQueryText("");
     setUiError("");
+    setStatusText("Listening...");
     setIsListening(true);
-    recognitionRef.current.start();
+    try {
+      recognitionRef.current.start();
+    } catch (err) {
+      setIsListening(false);
+      setUiError("Mic blocked");
+      setStatusText("Mic failed");
+    }
   };
 
   const stopListening = () => {
     try {
       recognitionRef.current?.stop();
-    } catch (err) {
-      console.error("Stop listening error:", err);
+    } catch (_err) {
+      // ignore
     }
     setIsListening(false);
+    if (!isProcessing) setStatusText("Ready");
+  };
+
+  const replayAudio = async () => {
+    if (!pendingAudioSrc) return;
+    try {
+      setStatusText("Speaking...");
+      const audio = new Audio(pendingAudioSrc);
+      await audio.play();
+      setPendingAudioSrc("");
+      setStatusText("Ready");
+    } catch (_err) {
+      setUiError("Play blocked");
+      setStatusText("Tap Play");
+    }
   };
 
   return (
@@ -190,15 +241,21 @@ export default function CameraFeed({ onCapture, onAction }) {
           {isListening ? "Stop Listening" : "Start Listening"}
         </button>
 
-        <button className="scan-button" onClick={runAutoDetect} disabled={isProcessing}>
+        <button className="scan-button" onClick={runAutoDetect} disabled={isProcessing || isListening}>
           Quick Scan
         </button>
       </div>
 
+      {!!pendingAudioSrc && (
+        <div className="controls">
+          <button className="scan-button replay-button" onClick={replayAudio} disabled={isProcessing}>
+            Tap Play
+          </button>
+        </div>
+      )}
+
       <div className="status-block">
-        <p className="status-line">
-          {isProcessing ? "Processing frame..." : isListening ? "Listening..." : "Ready"}
-        </p>
+        <p className="status-line">{statusText}</p>
         {queryText && <p className="query-line">Heard: "{queryText}"</p>}
         {uiError && <p className="error-line">{uiError}</p>}
       </div>

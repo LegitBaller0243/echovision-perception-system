@@ -14,10 +14,9 @@ export default function App() {
       try {
         const res = await checkHealth();
         setHealthStatus(res.status);
-        setError(null);
+        setError(res.status === "healthy" ? null : "Backend down");
       } catch (err) {
-        console.error("Health check error:", err);
-        setError("Backend connection failed. Make sure Flask server is running on port 5000.");
+        setError("Backend down");
         setHealthStatus("unhealthy");
       }
     };
@@ -28,10 +27,9 @@ export default function App() {
     try {
       const res = await checkHealth();
       setHealthStatus(res.status);
-      setError(null);
+      setError(res.status === "healthy" ? null : "Backend down");
     } catch (err) {
-      console.error("Health check error:", err);
-      setError("Backend connection failed.");
+      setError("Backend down");
       setHealthStatus("unhealthy");
     }
   };
