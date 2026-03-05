@@ -31,9 +31,3 @@ def yolo_detect(image_path: str):
         })
 
     return {"Objects": objects}
-
-# Example standalone test
-if __name__ == "__main__":
-    sample_image = "test.jpg"
-    output = yolo_detect(sample_image)
-    print(output)

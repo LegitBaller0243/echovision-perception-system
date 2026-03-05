@@ -1,13 +1,17 @@
 import base64
 import io
+import logging
 import os
 import tempfile
 import numpy as np
 from PIL import Image
 from typing import Dict, List
 
+from services.app_core.observability import get_logger, log_event, stage_timer
 from services.perception.inference.midas.adapter import depth_estimate
 from services.perception.rules.collision_scoring import collision_analyze
+
+logger = get_logger(__name__)
 
 def _is_base64_string(data: str) -> bool:
     """Check if string is likely base64 encoded."""
@@ -40,17 +44,15 @@ def positioner(image_path: str, detections: Dict) -> Dict:
         Dictionary with depth stats and collision analysis
     """
     temp_file_path = None
+    timings_ms = {}
     try:
-        print(f"\n[midas_positioner] Processing image input (length: {len(image_path)})")
         
         # === 1. Determine if input is file path or base64 string ===
         if os.path.exists(image_path):
             # It's a file path - use it directly
-            print(f"[midas_positioner] Using file path: {image_path}")
             actual_image_path = image_path
         elif _is_base64_string(image_path):
             # It's a base64 string - decode and save to temp file
-            print("[midas_positioner] Detected base64 string, decoding...")
             try:
                 clean_b64 = _clean_base64(image_path)
                 image_bytes = base64.b64decode(clean_b64, validate=True)
@@ -62,22 +64,20 @@ def positioner(image_path: str, detections: Dict) -> Dict:
                 temp_file.close()
                 actual_image_path = temp_file.name
                 temp_file_path = actual_image_path
-                print(f"[midas_positioner] Decoded base64 to temp file: {actual_image_path}")
             except Exception as e:
                 raise ValueError(f"Failed to decode base64 image: {str(e)}")
         else:
             raise ValueError(f"Invalid image input: neither a valid file path nor base64 string")
 
         # === 2. Estimate depth map using MiDaS ===
-        print("[midas_positioner] Running depth estimation...")
-        depth_result = depth_estimate(actual_image_path)
+        with stage_timer(timings_ms, "depth_estimation_ms"):
+            depth_result = depth_estimate(actual_image_path)
         depth_map = depth_result["depthMap"]
         if not isinstance(depth_map, np.ndarray):
             raise ValueError("Depth map is not a numpy array.")
-        print(f"[midas_positioner] Depth map shape: {depth_map.shape}")
 
         # === 3. Format YOLO detections ===
-        labeled_objects: List[Dict] = []
+        labeled_objects = []
         # Handle both dict with "Objects" key and direct list
         if isinstance(detections, dict):
             detections_list = detections.get("Objects", [])
@@ -85,8 +85,7 @@ def positioner(image_path: str, detections: Dict) -> Dict:
             detections_list = detections
         else:
             detections_list = []
-        
-        print(f"[midas_positioner] Processing {len(detections_list)} detections")
+
         for i, det in enumerate(detections_list):
             pos = det.get("position", {})
             labeled_objects.append({
@@ -102,34 +101,35 @@ def positioner(image_path: str, detections: Dict) -> Dict:
             })
 
         # === 4. Run collision detection ===
-        print(f"[midas_positioner] Running collision analysis on {len(labeled_objects)} objects...")
-        collision_results = collision_analyze(depth_map, labeled_objects)
-        print(f"[midas_positioner] Collision analysis complete: {len(collision_results)} results")
+        with stage_timer(timings_ms, "collision_analysis_ms"):
+            collision_results = collision_analyze(depth_map, labeled_objects)
 
         # === 5. Build unified response ===
         result = {
             "depthStats": depth_result.get("stats", {}),
             "inferenceTime": depth_result.get("inferenceTime", 0.0),
-            "collisionAnalysis": collision_results
+            "collisionAnalysis": collision_results,
         }
-        print("[midas_positioner] Successfully completed processing")
+        log_event(
+            logger,
+            "positioner_completed",
+            timings_ms=timings_ms,
+        )
         return result
 
     except Exception as e:
-        import traceback
         error_msg = str(e)
-        print(f"[midas_positioner] Error: {error_msg}")
-        traceback.print_exc()
+        log_event(logger, "positioner_failed", level=logging.ERROR, timings_ms=timings_ms)
+        logger.exception("positioner_exception")
         return {
             "error": error_msg,
             "depthStats": {},
-            "collisionAnalysis": []
+            "collisionAnalysis": [],
         }
     finally:
         # Clean up temp file if we created one
         if temp_file_path and os.path.exists(temp_file_path):
             try:
                 os.unlink(temp_file_path)
-                print(f"[midas_positioner] Cleaned up temp file: {temp_file_path}")
-            except Exception as e:
-                print(f"[midas_positioner] Warning: Failed to delete temp file: {e}")
+            except Exception:
+                pass
