@@ -1,7 +1,7 @@
 # KLR.ai (Refactor of a Hackathon Prototype)
 
 ## Attribution
-This codebase was originally cloned from a hackathon project:
+This codebase was originally cloned from a hackathon project my team and I did last year:
 - Original repository: `git@github.com:rayyansur/KLR.ai.git`
 - My role: post-hackathon engineer focused on refactoring architecture, improving maintainability, and preparing the system for latency optimization.
 
