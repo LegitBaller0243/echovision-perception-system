@@ -2,7 +2,7 @@
 
 ## Attribution
 This codebase was originally cloned from a hackathon project:
-- Original repository: `git@github.com:LegitBaller0243/echovision-perception-system.git`
+- Original repository: `git@github.com:rayyansur/KLR.ai.git`
 - My role: post-hackathon engineer focused on refactoring architecture, improving maintainability, and preparing the system for latency optimization.
 
 I did not build the initial prototype from scratch; I inherited it and re-structured it for production-style development.
