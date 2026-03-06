@@ -32,6 +32,63 @@ def _clean_base64(data: str) -> str:
         data += "=" * (4 - missing_padding)
     return data
 
+
+def _format_labeled_objects(detections: Dict | List[Dict]) -> List[Dict]:
+    labeled_objects = []
+    if isinstance(detections, dict):
+        detections_list = detections.get("Objects", [])
+    elif isinstance(detections, list):
+        detections_list = detections
+    else:
+        detections_list = []
+
+    for i, det in enumerate(detections_list):
+        pos = det.get("position", {})
+        labeled_objects.append({
+            "objectId": i + 1,
+            "label": det.get("class", "unknown"),
+            "bbox": [
+                float(pos.get("x1", 0)),
+                float(pos.get("y1", 0)),
+                float(pos.get("x2", 0)),
+                float(pos.get("y2", 0)),
+            ],
+            "detectionConfidence": float(det.get("confidence", 0.0)),
+        })
+    return labeled_objects
+
+
+def analyze_depth_and_detections(depth_result: Dict, detections: Dict | List[Dict]) -> Dict:
+    depth_map = depth_result.get("depthMap")
+    if not isinstance(depth_map, np.ndarray):
+        raise ValueError("Depth map is not a numpy array.")
+
+    labeled_objects = _format_labeled_objects(detections)
+    collision_results = collision_analyze(depth_map, labeled_objects)
+    valid_depth = depth_map[depth_map > 0]
+    if valid_depth.size > 0:
+        p95 = float(np.percentile(valid_depth, 95))
+        has_unknown = any(item.get("label") == "unknown_obstacle" for item in collision_results)
+        if p95 >= 0.85 and not has_unknown:
+            collision_results.append(
+                {
+                    "objectId": 0,
+                    "label": "unknown_obstacle",
+                    "direction": "center",
+                    "dangerLevel": "MODERATE_WARNING",
+                    "distanceBandMeters": 3.0,
+                    "confidenceScore": round(min(1.0, p95), 2),
+                    "reasonForDanger": "Depth-only foreground hazard",
+                }
+            )
+
+    return {
+        "depthStats": depth_result.get("stats", {}),
+        "inferenceTime": depth_result.get("inferenceTime", 0.0),
+        "collisionAnalysis": collision_results,
+    }
+
+
 def positioner(image_path: str, detections: Dict) -> Dict:
     """
     Process image for depth estimation and collision detection.
@@ -72,44 +129,10 @@ def positioner(image_path: str, detections: Dict) -> Dict:
         # === 2. Estimate depth map using MiDaS ===
         with stage_timer(timings_ms, "depth_estimation_ms"):
             depth_result = depth_estimate(actual_image_path)
-        depth_map = depth_result["depthMap"]
-        if not isinstance(depth_map, np.ndarray):
-            raise ValueError("Depth map is not a numpy array.")
-
-        # === 3. Format YOLO detections ===
-        labeled_objects = []
-        # Handle both dict with "Objects" key and direct list
-        if isinstance(detections, dict):
-            detections_list = detections.get("Objects", [])
-        elif isinstance(detections, list):
-            detections_list = detections
-        else:
-            detections_list = []
-
-        for i, det in enumerate(detections_list):
-            pos = det.get("position", {})
-            labeled_objects.append({
-                "objectId": i + 1,
-                "label": det.get("class", "unknown"),
-                "bbox": [
-                    float(pos.get("x1", 0)),
-                    float(pos.get("y1", 0)),
-                    float(pos.get("x2", 0)),
-                    float(pos.get("y2", 0)),
-                ],
-                "detectionConfidence": float(det.get("confidence", 0.0))
-            })
-
-        # === 4. Run collision detection ===
+        # === 3. Run collision detection ===
         with stage_timer(timings_ms, "collision_analysis_ms"):
-            collision_results = collision_analyze(depth_map, labeled_objects)
+            result = analyze_depth_and_detections(depth_result, detections)
 
-        # === 5. Build unified response ===
-        result = {
-            "depthStats": depth_result.get("stats", {}),
-            "inferenceTime": depth_result.get("inferenceTime", 0.0),
-            "collisionAnalysis": collision_results,
-        }
         log_event(
             logger,
             "positioner_completed",

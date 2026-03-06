@@ -9,14 +9,14 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request, Response, send_from_directory
 from flask_cors import CORS
 
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 FRONTEND_DIST = PROJECT_ROOT / "apps" / "frontend" / "dist"
 
 from integrations.audio.text_to_speech import text_to_speech as tts
 from services.app_core.observability import ensure_trace_id, get_logger, log_event, stage_timer
-from services.app_core.use_cases.orchestrator import process_auto_detect, process_query
+from services.app_core.orchestrator import process_auto_detect, process_query
 
 
 routes = Blueprint('routes', __name__)
