@@ -65,6 +65,22 @@ def analyze_depth_and_detections(depth_result: Dict, detections: Dict | List[Dic
 
     labeled_objects = _format_labeled_objects(detections)
     collision_results = collision_analyze(depth_map, labeled_objects)
+    valid_depth = depth_map[depth_map > 0]
+    if valid_depth.size > 0:
+        p95 = float(np.percentile(valid_depth, 95))
+        has_unknown = any(item.get("label") == "unknown_obstacle" for item in collision_results)
+        if p95 >= 0.85 and not has_unknown:
+            collision_results.append(
+                {
+                    "objectId": 0,
+                    "label": "unknown_obstacle",
+                    "direction": "center",
+                    "dangerLevel": "MODERATE_WARNING",
+                    "distanceBandMeters": 3.0,
+                    "confidenceScore": round(min(1.0, p95), 2),
+                    "reasonForDanger": "Depth-only foreground hazard",
+                }
+            )
 
     return {
         "depthStats": depth_result.get("stats", {}),
