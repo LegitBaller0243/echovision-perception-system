@@ -23,17 +23,6 @@ export default function App() {
     checkBackendHealth();
   }, []);
 
-  const handleComponentClick = async () => {
-    try {
-      const res = await checkHealth();
-      setHealthStatus(res.status);
-      setError(res.status === "healthy" ? null : "Backend down");
-    } catch (err) {
-      setError("Backend down");
-      setHealthStatus("unhealthy");
-    }
-  };
-
   return (
     <main className="app-shell">
       <header className="hero">
@@ -48,7 +37,7 @@ export default function App() {
         </div>
       )}
 
-      <CameraFeed onCapture={setLatestImage} onAction={handleComponentClick} />
+      <CameraFeed onCapture={setLatestImage} />
 
       <footer className="health-footer">
         <span>Backend</span>

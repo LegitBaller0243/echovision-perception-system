@@ -11,4 +11,4 @@ from apps.api.src.main import create_app
 
 if __name__ == "__main__":
     app = create_app()
-    app.run(debug=True, port=int(os.getenv("PORT", "5000")), host="0.0.0.0")
+    app.run(debug=True, port=int(os.getenv("PORT", "5001")), host="0.0.0.0")

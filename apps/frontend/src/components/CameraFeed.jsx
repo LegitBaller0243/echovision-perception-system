@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { sendAutoDetect, sendQuery, sendTextToSpeech } from "../api";
 
+const AUTO_DETECT_INTERVAL_MS = 12000;
+
 export default function CameraFeed({ onCapture, onAction }) {
   const [result, setResult] = useState(null);
   const [queryText, setQueryText] = useState("");
@@ -15,10 +17,40 @@ export default function CameraFeed({ onCapture, onAction }) {
   const recognitionRef = useRef(null);
   const processedFinalRef = useRef(false);
   const isProcessingRef = useRef(false);
+  const audioUnlockedRef = useRef(false);
+  const audioContextRef = useRef(null);
+  const ttsAudioRef = useRef(new Audio());
 
   useEffect(() => {
     isProcessingRef.current = isProcessing;
   }, [isProcessing]);
+
+  const ensureAudioUnlocked = async () => {
+    if (audioUnlockedRef.current) return;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) {
+      audioUnlockedRef.current = true;
+      return;
+    }
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioCtx();
+      }
+      if (audioContextRef.current.state === "suspended") {
+        await audioContextRef.current.resume();
+      }
+      const oscillator = audioContextRef.current.createOscillator();
+      const gain = audioContextRef.current.createGain();
+      gain.gain.value = 0.0001;
+      oscillator.connect(gain);
+      gain.connect(audioContextRef.current.destination);
+      oscillator.start();
+      oscillator.stop(audioContextRef.current.currentTime + 0.01);
+      audioUnlockedRef.current = true;
+    } catch (_err) {
+      // keep Tap Play fallback
+    }
+  };
 
   useEffect(() => {
     const enableCamera = async () => {
@@ -77,9 +109,8 @@ export default function CameraFeed({ onCapture, onAction }) {
     }
 
     const src = `data:${ttsResponse.content_type || "audio/mpeg"};base64,${ttsResponse.audio_base64}`;
-    const audio = new Audio(
-      `data:${ttsResponse.content_type || "audio/mpeg"};base64,${ttsResponse.audio_base64}`
-    );
+    const audio = ttsAudioRef.current;
+    audio.src = src;
     try {
       await audio.play();
       setPendingAudioSrc("");
@@ -96,6 +127,7 @@ export default function CameraFeed({ onCapture, onAction }) {
     setUiError("");
     setStatusText("Capturing...");
     try {
+      await ensureAudioUnlocked();
       onAction && onAction();
       const blob = await captureFrame();
       onCapture && onCapture(blob);
@@ -113,8 +145,10 @@ export default function CameraFeed({ onCapture, onAction }) {
     } catch (err) {
       if (!suppressError) {
         setUiError(err.message || "Scan failed");
+        setStatusText("Scan failed");
+      } else {
+        setStatusText("Ready");
       }
-      setStatusText("Scan failed");
     } finally {
       setIsProcessing(false);
     }
@@ -147,6 +181,10 @@ export default function CameraFeed({ onCapture, onAction }) {
   };
 
   const startListening = () => {
+    if (isAutoDetectOn) {
+      setIsAutoDetectOn(false);
+    }
+
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -207,6 +245,7 @@ export default function CameraFeed({ onCapture, onAction }) {
     setStatusText("Listening...");
     setIsListening(true);
     try {
+      ensureAudioUnlocked();
       recognitionRef.current.start();
     } catch (err) {
       setIsListening(false);
@@ -229,7 +268,8 @@ export default function CameraFeed({ onCapture, onAction }) {
     if (!pendingAudioSrc) return;
     try {
       setStatusText("Speaking...");
-      const audio = new Audio(pendingAudioSrc);
+      const audio = ttsAudioRef.current;
+      audio.src = pendingAudioSrc;
       await audio.play();
       setPendingAudioSrc("");
       setStatusText("Ready");
@@ -244,9 +284,9 @@ export default function CameraFeed({ onCapture, onAction }) {
 
     const intervalId = window.setInterval(() => {
       if (!isListening && !isProcessingRef.current) {
-        runAutoDetect({ playAudio: false, suppressError: true });
+        runAutoDetect({ playAudio: true, suppressError: true });
       }
-    }, 3000);
+    }, AUTO_DETECT_INTERVAL_MS);
 
     return () => window.clearInterval(intervalId);
   }, [isAutoDetectOn, isListening]);
