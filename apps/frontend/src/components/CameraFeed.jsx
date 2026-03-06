@@ -1,11 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
 import { sendAutoDetect, sendQuery, sendTextToSpeech } from "../api";
 
+const AUTO_DETECT_INTERVAL_MS = 12000;
+
 export default function CameraFeed({ onCapture, onAction }) {
   const [result, setResult] = useState(null);
   const [queryText, setQueryText] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isAutoDetectOn, setIsAutoDetectOn] = useState(false);
   const [statusText, setStatusText] = useState("Ready");
   const [uiError, setUiError] = useState("");
   const [pendingAudioSrc, setPendingAudioSrc] = useState("");
@@ -13,9 +16,41 @@ export default function CameraFeed({ onCapture, onAction }) {
   const canvasRef = useRef(document.createElement("canvas"));
   const recognitionRef = useRef(null);
   const processedFinalRef = useRef(false);
+  const isProcessingRef = useRef(false);
   const audioUnlockedRef = useRef(false);
   const audioContextRef = useRef(null);
   const ttsAudioRef = useRef(new Audio());
+
+  useEffect(() => {
+    isProcessingRef.current = isProcessing;
+  }, [isProcessing]);
+
+  const ensureAudioUnlocked = async () => {
+    if (audioUnlockedRef.current) return;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) {
+      audioUnlockedRef.current = true;
+      return;
+    }
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioCtx();
+      }
+      if (audioContextRef.current.state === "suspended") {
+        await audioContextRef.current.resume();
+      }
+      const oscillator = audioContextRef.current.createOscillator();
+      const gain = audioContextRef.current.createGain();
+      gain.gain.value = 0.0001;
+      oscillator.connect(gain);
+      gain.connect(audioContextRef.current.destination);
+      oscillator.start();
+      oscillator.stop(audioContextRef.current.currentTime + 0.01);
+      audioUnlockedRef.current = true;
+    } catch (_err) {
+      // keep Tap Play fallback
+    }
+  };
 
   useEffect(() => {
     const enableCamera = async () => {
@@ -40,34 +75,6 @@ export default function CameraFeed({ onCapture, onAction }) {
     };
     enableCamera();
   }, []);
-
-  const ensureAudioUnlocked = async () => {
-    if (audioUnlockedRef.current) return;
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) {
-      audioUnlockedRef.current = true;
-      return;
-    }
-
-    try {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new AudioCtx();
-      }
-      if (audioContextRef.current.state === "suspended") {
-        await audioContextRef.current.resume();
-      }
-      const oscillator = audioContextRef.current.createOscillator();
-      const gain = audioContextRef.current.createGain();
-      gain.gain.value = 0.0001;
-      oscillator.connect(gain);
-      gain.connect(audioContextRef.current.destination);
-      oscillator.start();
-      oscillator.stop(audioContextRef.current.currentTime + 0.01);
-      audioUnlockedRef.current = true;
-    } catch (_err) {
-      // no-op: keep existing Tap Play fallback behavior
-    }
-  };
 
   const captureFrame = () =>
     new Promise((resolve, reject) => {
@@ -136,7 +143,8 @@ export default function CameraFeed({ onCapture, onAction }) {
     }
   };
 
-  const runAutoDetect = async () => {
+  const runAutoDetect = async ({ playAudio = true, suppressError = false } = {}) => {
+    if (isProcessingRef.current) return;
     setIsProcessing(true);
     setUiError("");
     setStatusText("Capturing...");
@@ -149,12 +157,20 @@ export default function CameraFeed({ onCapture, onAction }) {
       const response = await sendAutoDetect(blob);
       const text = response?.result || "No response";
       setResult(text);
-      setStatusText("Speaking...");
-      const played = await playTTS(text);
-      setStatusText(played ? "Ready" : "Tap Play");
+      if (playAudio) {
+        setStatusText("Speaking...");
+        const played = await playTTS(text);
+        setStatusText(played ? "Ready" : "Tap Play");
+      } else {
+        setStatusText("Ready");
+      }
     } catch (err) {
-      setUiError(err.message || "Scan failed");
-      setStatusText("Scan failed");
+      if (!suppressError) {
+        setUiError(err.message || "Scan failed");
+        setStatusText("Scan failed");
+      } else {
+        setStatusText("Ready");
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -187,6 +203,10 @@ export default function CameraFeed({ onCapture, onAction }) {
   };
 
   const startListening = () => {
+    if (isAutoDetectOn) {
+      setIsAutoDetectOn(false);
+    }
+
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -281,6 +301,18 @@ export default function CameraFeed({ onCapture, onAction }) {
     }
   };
 
+  useEffect(() => {
+    if (!isAutoDetectOn) return undefined;
+
+    const intervalId = window.setInterval(() => {
+      if (!isListening && !isProcessingRef.current) {
+        runAutoDetect({ playAudio: true, suppressError: true });
+      }
+    }, AUTO_DETECT_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [isAutoDetectOn, isListening]);
+
   return (
     <section className="camera-card">
       <div className="video-shell">
@@ -298,6 +330,14 @@ export default function CameraFeed({ onCapture, onAction }) {
 
         <button className="scan-button" onClick={runAutoDetect} disabled={isProcessing || isListening}>
           Quick Scan
+        </button>
+
+        <button
+          className="scan-button"
+          onClick={() => setIsAutoDetectOn((prev) => !prev)}
+          disabled={isListening}
+        >
+          {isAutoDetectOn ? "Stop Auto Detect" : "Start Auto Detect"}
         </button>
       </div>
 
