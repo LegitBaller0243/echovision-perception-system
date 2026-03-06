@@ -10,7 +10,7 @@ FRONTEND_DIST = PROJECT_ROOT / "apps" / "frontend" / "dist"
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from apps.api.src.api.routes import routes
+from apps.api.src.routes import routes
 from services.app_core.observability import configure_logging
 
 def create_app():
@@ -38,4 +38,4 @@ def create_app():
 
 if __name__ == "__main__":
     app = create_app()
-    app.run(debug=True, port=int(os.getenv("PORT", "5000")), host="0.0.0.0")
+    app.run(debug=True, port=int(os.getenv("PORT", "5001")), host="0.0.0.0")
