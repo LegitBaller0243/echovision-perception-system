@@ -6,6 +6,7 @@ export default function CameraFeed({ onCapture, onAction }) {
   const [queryText, setQueryText] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isAutoDetectOn, setIsAutoDetectOn] = useState(false);
   const [statusText, setStatusText] = useState("Ready");
   const [uiError, setUiError] = useState("");
   const [pendingAudioSrc, setPendingAudioSrc] = useState("");
@@ -13,6 +14,11 @@ export default function CameraFeed({ onCapture, onAction }) {
   const canvasRef = useRef(document.createElement("canvas"));
   const recognitionRef = useRef(null);
   const processedFinalRef = useRef(false);
+  const isProcessingRef = useRef(false);
+
+  useEffect(() => {
+    isProcessingRef.current = isProcessing;
+  }, [isProcessing]);
 
   useEffect(() => {
     const enableCamera = async () => {
@@ -84,7 +90,8 @@ export default function CameraFeed({ onCapture, onAction }) {
     }
   };
 
-  const runAutoDetect = async () => {
+  const runAutoDetect = async ({ playAudio = true, suppressError = false } = {}) => {
+    if (isProcessingRef.current) return;
     setIsProcessing(true);
     setUiError("");
     setStatusText("Capturing...");
@@ -96,11 +103,17 @@ export default function CameraFeed({ onCapture, onAction }) {
       const response = await sendAutoDetect(blob);
       const text = response?.result || "No response";
       setResult(text);
-      setStatusText("Speaking...");
-      const played = await playTTS(text);
-      setStatusText(played ? "Ready" : "Tap Play");
+      if (playAudio) {
+        setStatusText("Speaking...");
+        const played = await playTTS(text);
+        setStatusText(played ? "Ready" : "Tap Play");
+      } else {
+        setStatusText("Ready");
+      }
     } catch (err) {
-      setUiError(err.message || "Scan failed");
+      if (!suppressError) {
+        setUiError(err.message || "Scan failed");
+      }
       setStatusText("Scan failed");
     } finally {
       setIsProcessing(false);
@@ -226,6 +239,18 @@ export default function CameraFeed({ onCapture, onAction }) {
     }
   };
 
+  useEffect(() => {
+    if (!isAutoDetectOn) return undefined;
+
+    const intervalId = window.setInterval(() => {
+      if (!isListening && !isProcessingRef.current) {
+        runAutoDetect({ playAudio: false, suppressError: true });
+      }
+    }, 3000);
+
+    return () => window.clearInterval(intervalId);
+  }, [isAutoDetectOn, isListening]);
+
   return (
     <section className="camera-card">
       <div className="video-shell">
@@ -243,6 +268,14 @@ export default function CameraFeed({ onCapture, onAction }) {
 
         <button className="scan-button" onClick={runAutoDetect} disabled={isProcessing || isListening}>
           Quick Scan
+        </button>
+
+        <button
+          className="scan-button"
+          onClick={() => setIsAutoDetectOn((prev) => !prev)}
+          disabled={isListening}
+        >
+          {isAutoDetectOn ? "Stop Auto Detect" : "Start Auto Detect"}
         </button>
       </div>
 
