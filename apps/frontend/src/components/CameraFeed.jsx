@@ -13,6 +13,9 @@ export default function CameraFeed({ onCapture, onAction }) {
   const canvasRef = useRef(document.createElement("canvas"));
   const recognitionRef = useRef(null);
   const processedFinalRef = useRef(false);
+  const audioUnlockedRef = useRef(false);
+  const audioContextRef = useRef(null);
+  const ttsAudioRef = useRef(new Audio());
 
   useEffect(() => {
     const enableCamera = async () => {
@@ -38,6 +41,34 @@ export default function CameraFeed({ onCapture, onAction }) {
     enableCamera();
   }, []);
 
+  const ensureAudioUnlocked = async () => {
+    if (audioUnlockedRef.current) return;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) {
+      audioUnlockedRef.current = true;
+      return;
+    }
+
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioCtx();
+      }
+      if (audioContextRef.current.state === "suspended") {
+        await audioContextRef.current.resume();
+      }
+      const oscillator = audioContextRef.current.createOscillator();
+      const gain = audioContextRef.current.createGain();
+      gain.gain.value = 0.0001;
+      oscillator.connect(gain);
+      gain.connect(audioContextRef.current.destination);
+      oscillator.start();
+      oscillator.stop(audioContextRef.current.currentTime + 0.01);
+      audioUnlockedRef.current = true;
+    } catch (_err) {
+      // no-op: keep existing Tap Play fallback behavior
+    }
+  };
+
   const captureFrame = () =>
     new Promise((resolve, reject) => {
       const video = videoRef.current;
@@ -47,10 +78,32 @@ export default function CameraFeed({ onCapture, onAction }) {
       }
 
       const canvas = canvasRef.current;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      const targetWidth = video.clientWidth || video.videoWidth;
+      const targetHeight = video.clientHeight || video.videoHeight;
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
       const ctx = canvas.getContext("2d");
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // Match CSS object-fit: cover so preview framing equals analyzed framing.
+      const sourceWidth = video.videoWidth;
+      const sourceHeight = video.videoHeight;
+      const scale = Math.max(targetWidth / sourceWidth, targetHeight / sourceHeight);
+      const cropWidth = targetWidth / scale;
+      const cropHeight = targetHeight / scale;
+      const cropX = (sourceWidth - cropWidth) / 2;
+      const cropY = (sourceHeight - cropHeight) / 2;
+
+      ctx.drawImage(
+        video,
+        cropX,
+        cropY,
+        cropWidth,
+        cropHeight,
+        0,
+        0,
+        targetWidth,
+        targetHeight
+      );
       canvas.toBlob(
         (blob) => {
           if (!blob) {
@@ -71,9 +124,8 @@ export default function CameraFeed({ onCapture, onAction }) {
     }
 
     const src = `data:${ttsResponse.content_type || "audio/mpeg"};base64,${ttsResponse.audio_base64}`;
-    const audio = new Audio(
-      `data:${ttsResponse.content_type || "audio/mpeg"};base64,${ttsResponse.audio_base64}`
-    );
+    const audio = ttsAudioRef.current;
+    audio.src = src;
     try {
       await audio.play();
       setPendingAudioSrc("");
@@ -89,6 +141,7 @@ export default function CameraFeed({ onCapture, onAction }) {
     setUiError("");
     setStatusText("Capturing...");
     try {
+      await ensureAudioUnlocked();
       onAction && onAction();
       const blob = await captureFrame();
       onCapture && onCapture(blob);
@@ -194,6 +247,7 @@ export default function CameraFeed({ onCapture, onAction }) {
     setStatusText("Listening...");
     setIsListening(true);
     try {
+      ensureAudioUnlocked();
       recognitionRef.current.start();
     } catch (err) {
       setIsListening(false);
@@ -216,7 +270,8 @@ export default function CameraFeed({ onCapture, onAction }) {
     if (!pendingAudioSrc) return;
     try {
       setStatusText("Speaking...");
-      const audio = new Audio(pendingAudioSrc);
+      const audio = ttsAudioRef.current;
+      audio.src = pendingAudioSrc;
       await audio.play();
       setPendingAudioSrc("");
       setStatusText("Ready");

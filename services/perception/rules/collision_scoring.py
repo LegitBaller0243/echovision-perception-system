@@ -278,7 +278,7 @@ class CollisionDetectorService:
         center_x = width / 2.0
         offset_x = x - center_x
         
-        if abs(offset_x) < width * 0.2:
+        if abs(offset_x) < width * 0.25:
             return "center"
         elif offset_x < 0:
             return "left"
