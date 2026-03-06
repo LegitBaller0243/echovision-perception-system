@@ -10,6 +10,7 @@ test_azure_ai.py
 *.pt
 benchmarks/
 images/
+tools/benchmark/
 
 # LLM eval artifacts
 llm_comparison_*/
